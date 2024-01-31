@@ -1,0 +1,54 @@
+import pandas as pd
+import plotly.express as px
+
+# Sample DataFrame creation
+data = {
+    'business_unit': ['BU1', 'BU1', 'BU2', 'BU2', 'BU1', 'BU2'],
+    'marketing_campaign': ['A', 'A', 'B', 'B', 'C', 'C'],
+    'spend': [100, 120, 150, 140, 110, 160],
+    'other_variable_1': [10, 12, 15, 14, 11, 16],
+    'other_variable_2': [8, 9, 11, 10, 7, 12],
+    'date': pd.to_datetime(['2022-01-01', '2022-02-01', '2022-01-01', '2022-02-01', '2022-03-01', '2022-03-01'])
+}
+df = pd.DataFrame(data)
+
+# Calculate Month-over-Month (MOM) difference
+df['mom_diff'] = df.groupby('business_unit')['spend'].diff()
+
+# Calculate correlation with 'spend' for other variables
+correlations = df.drop(['business_unit', 'date'], axis=1).corr()['spend']
+
+# Determine reasons based on correlation values
+threshold = 0.2
+for unit in df['business_unit'].unique():
+    unit_data = df[df['business_unit'] == unit]
+    for idx, row in unit_data.iterrows():
+        if row['mom_diff'] > threshold * df['spend'].max():
+            # Example: Check correlation with other_variable_1
+            if correlations['other_variable_1'] > 0.5:  # You can adjust the threshold
+                df.at[idx, 'reason'] = 'Sudden increase due to high correlation with other_variable_1'
+            else:
+                df.at[idx, 'reason'] = 'Sudden increase with no significant correlation'
+        elif row['mom_diff'] < -threshold * df['spend'].min():
+            # Example: Check correlation with other_variable_2
+            if correlations['other_variable_2'] < -0.5:  # You can adjust the threshold
+                df.at[idx, 'reason'] = 'Sudden decrease due to high negative correlation with other_variable_2'
+            else:
+                df.at[idx, 'reason'] = 'Sudden decrease with no significant correlation'
+        else:
+            df.at[idx, 'reason'] = 'No significant change'
+
+# Create a dropdown menu with business units
+business_units = df['business_unit'].unique()
+
+# Plot trend using Plotly Express
+fig = px.line(df, x='date', y='spend', color='business_unit', labels={'spend': 'Spend'}, title='Spend Trend vs. Date')
+
+# Display the chart
+fig.show()
+
+# Display reasons for sudden increases or decreases
+for unit in business_units:
+    unit_data = df[df['business_unit'] == unit]
+    unit_reasons = unit_data[['date', 'reason']]
+    print(f"\nReasons for {unit}:\n{unit_reasons}")
