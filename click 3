@@ -1,0 +1,110 @@
+import pandas as pd
+import numpy as np
+import plotly.graph_objs as go
+from sklearn.ensemble import IsolationForest
+from ipywidgets import widgets, interact
+from IPython.display import display, Javascript
+import calendar  # Import the calendar module
+
+# Sample spend data (replace with your actual data)
+data = {
+    'Year': np.random.choice([2022, 2023], 100),
+    'Month': np.random.randint(1, 13, 100),
+    'Commodity_Category': np.random.choice(['Category_A', 'Category_B', 'Category_C'], 100),
+    'Business_Unit': np.random.choice(['Unit1', 'Unit2', 'Unit3'], 100),
+    'Spend': np.random.randint(1000, 10000, 100)
+}
+
+df = pd.DataFrame(data)
+
+# Function to perform time series analysis and anomaly detection
+def analyze_spend(selected_category, year1, year2, spend_data):
+    category_data = spend_data[spend_data['Commodity_Category'] == selected_category]
+    
+    # Filter data for the selected years
+    year1_data = category_data[category_data['Year'] == year1]
+    year2_data = category_data[category_data['Year'] == year2]
+    
+    # Combine data for both years
+    combined_data = pd.concat([year1_data, year2_data])
+    
+    # Sort combined data by year and month
+    combined_data = combined_data.sort_values(by=['Year', 'Month'])
+    
+    # Prepare data for plotting
+    fig = go.Figure()
+    
+    # Plot spend data for each year
+    for year, year_data in combined_data.groupby('Year'):
+        # Calculate x-axis positions for months
+        x_values = list(range(1, 25))  # Total months from 1 to 24
+        x_labels = [calendar.month_abbr[i] for i in range(1, 13)] * 2  # Months abbreviation for two years
+        
+        fig.add_trace(go.Scatter(x=x_values, y=year_data['Spend'], mode='lines+markers', name=f'Spend ({year})'))
+        
+        # Anomaly detection for the current year
+        X = year_data[['Spend']].values.reshape(-1, 1)
+        clf = IsolationForest(contamination=0.05)
+        clf.fit(X)
+        anomalies = clf.predict(X)
+        anomaly_indices = np.where(anomalies == -1)[0]
+        anomaly_x_values = [x_values[i] for i in anomaly_indices]
+        anomaly_spend = year_data['Spend'].iloc[anomaly_indices]
+        fig.add_trace(go.Scatter(x=anomaly_x_values, y=anomaly_spend, mode='markers', name=f'Anomalies ({year})', marker=dict(color='red')))
+    
+    fig.update_layout(title=f'Time Series Analysis - Spend for {selected_category}',
+                      xaxis_title='Month',
+                      yaxis_title='Spend',
+                      xaxis=dict(tickmode='array', tickvals=list(range(1, 25)), ticktext=x_labels))  # Adjust x-axis ticks
+    
+    # Add custom JavaScript to handle click events
+    click_js = """
+    <script>
+    document.getElementById('graph').on('plotly_click', function(data){
+        var point = data.points[0];
+        var month = point.x % 12 || 12;
+        var year = Math.ceil(point.x / 12);
+        var category = point.data.name.split('(')[1].split(')')[0];
+        var unit_data = Jupyter.notebook.kernel.execute("df[(df['Commodity_Category'] == '"+category+"') & (df['Month'] == "+month+") & (df['Year'] == "+year+")]");
+        unit_data.then(reply => {
+            var unit = reply.content.data["text/plain"].split("\\n")[1].split("'")[1];
+            var spend_data = Jupyter.notebook.kernel.execute("df[(df['Commodity_Category'] == '"+category+"') & (df['Month'] == "+month+") & (df['Year'] == "+year+") & (df['Business_Unit'] == '"+unit+"')]");
+            spend_data.then(reply => {
+                var spend_values = reply.content.data["text/plain"].split("\\n")[1].split("[")[1].split("]")[0].split(",");
+                var spend = [];
+                for (var i=0; i<spend_values.length; i++) {
+                    spend.push(parseInt(spend_values[i]));
+                }
+                var month_name = new Date(Date.UTC(2000, month - 1)).toLocaleString('en-us', { month: 'long' });
+                var layout = {
+                    title: "Business Unit vs Spend Trend for " + category + " in " + month_name + " " + year,
+                    xaxis: {title: "Business Unit"},
+                    yaxis: {title: "Spend"}
+                };
+                Plotly.newPlot("bu_plot", [{x: [unit], y: spend, type: "bar"}], layout);
+            });
+        });
+    });
+    </script>
+    """
+    fig.add_custom_js(click_js)
+
+    # Show the plot
+    display(fig)
+
+# Dropdown menu widget for selecting commodity category
+category_dropdown = widgets.Dropdown(options=df['Commodity_Category'].unique(), description='Category:')
+
+# Dropdown menu widgets for selecting years
+year1_dropdown = widgets.Dropdown(options=df['Year'].unique(), description='Year 1:')
+year2_dropdown = widgets.Dropdown(options=df['Year'].unique(), description='Year 2:')
+
+# Define a wrapper function to pass selected category, years, and grouped dataframe to analyze_spend
+def wrapper(selected_category, year1, year2):
+    analyze_spend(selected_category, year1, year2, df)
+
+# Bind event handler to dropdowns
+interact(wrapper, selected_category=category_dropdown, year1=year1_dropdown, year2=year2_dropdown)
+
+# Initial analysis for the first category and the first two years
+analyze_spend(df['Commodity_Category'].iloc[0], df['Year'].min(), df['Year'].min() + 1, df)
