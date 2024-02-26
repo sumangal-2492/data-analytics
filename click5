@@ -1,29 +1,34 @@
-click_handler = """
-    <script>
-    // Define a function to handle click events
-    function handleClick(event) {
-        var monthNames = Object.keys(calendar.month_abbr).slice(1); // Get month names from the calendar module
-        var point = event.points[0];
-        var monthIndex = point.xaxis._arrayIndices[point.x];
-        var selectedMonth = monthNames[monthIndex];
-        var selectedYear = point.data.name.split('(')[1].split(')')[0];
-        var selectedCategory = point.data.name.split(' ')[1];
-        var businessUnitData = [];
-        for (var i = 0; i < df.length; i++) {
-            if (df[i]['Commodity_Category'] == selectedCategory && df[i]['Year'] == selectedYear && df[i]['Month'] == selectedMonth) {
-                businessUnitData.push(df[i]);
-            }
+display(Javascript("""
+    require.undef('click-handler');
+    define('click-handler', ['plotly'], function(Plotly) {
+        function clickHandler(msg) {
+            var selectedYear = msg.points[0].data.name.split(' ')[1].slice(1, -1);
+            var selectedMonthIndex = msg.points[0].x % 12 || 12;
+            var selectedMonth = Array.from(calendar.month_abbr.values())[selectedMonthIndex];
+            var selectedCategory = msg.points[0].data.name.split(' ')[2];
+            
+            var selectedData = msg.points[0].data.name.split(' ')[3].split('(')[1].split(')')[0];
+            var selectedUnit = selectedData.split(':')[0];
+            var selectedSpend = selectedData.split(':')[1];
+            
+            var buFig = {
+                'data': [{'x': [" + selectedUnit + "], 'y': [" + selectedSpend + "], 'type': 'bar'}],
+                'layout': {
+                    'title': 'Business Unit vs Spend Trend for ' + selectedCategory + ' in ' + selectedMonth + ' ' + selectedYear,
+                    'xaxis': {'title': 'Business Unit'},
+                    'yaxis': {'title': 'Spend'}
+                }
+            };
+            Plotly.newPlot('bu_plot', buFig.data, buFig.layout);
         }
-        // Pass the data to the Python function for further processing
-        var kernel = IPython.notebook.kernel;
-        kernel.execute("plot_business_unit_trend('" + JSON.stringify(businessUnitData) + "')");
-    }
+        return {
+            clickHandler: clickHandler
+        };
+    });
 
-    // Attach click event listener to the plot
-    var plot = document.getElementById('notebook-container').getElementsByClassName('plotly')[0];
-    plot.on('plotly_click', handleClick);
-    </script>
-    """
-
-    # Display the click handler script
-    display(Javascript(click_handler))
+    require(['click-handler', 'plotly'], function(CH, Plotly) {
+        Plotly.newPlot('graph', [], {});
+        var plot = document.getElementById('graph');
+        plot.on('plotly_click', CH.clickHandler);
+    });
+    """))
