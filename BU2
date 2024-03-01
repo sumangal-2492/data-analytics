@@ -1,12 +1,12 @@
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.graph_objects as go
 from sklearn.ensemble import IsolationForest
 import ipywidgets as widgets
 from IPython.display import display
 
 # Load the data
-data_path = 'TEST (1).xlsx'  # Adjust the path according to your environment
+data_path = 'TEST (1).xlsx'  # Update this path
 data = pd.read_excel(data_path)
 
 def detect_anomalies_with_isolation_forest(df, feature='Spend'):
@@ -14,50 +14,47 @@ def detect_anomalies_with_isolation_forest(df, feature='Spend'):
     df['anomaly'] = model.fit_predict(df[[feature]])
     return df
 
-def plot_spend_vs_month_matplotlib(commodity):
-    fig, ax = plt.subplots(figsize=(10, 6))
+def plot_spend_vs_month_plotly(commodity):
+    fig = go.Figure()
     
-    for year in data['Year'].unique():
+    for year in sorted(data['Year'].unique()):
         df_year = data[(data['Commodity'] == commodity) & (data['Year'] == year)]
         df_year = df_year.groupby(['Month'], as_index=False).agg({'Spend': 'sum'})
         df_year = detect_anomalies_with_isolation_forest(df_year)
         
-        ax.plot(df_year['Month'], df_year['Spend'], marker='o', label=f'Year {year}')
-        anomalies = df_year[df_year['anomaly'] == -1]
-        ax.scatter(anomalies['Month'], anomalies['Spend'], color='red', zorder=5)
+        fig.add_trace(go.Scatter(x=df_year['Month'], y=df_year['Spend'],
+                                 mode='lines+markers+text', name=f'Year {year}',
+                                 text=df_year['Spend'], textposition="top center",
+                                 marker=dict(color='red' if df_year['anomaly'].any() == -1 else 'blue')))
     
-    ax.set_title(f'Monthly Spend for {commodity}', fontsize=14)
-    ax.set_xlabel('Month', fontsize=12)
-    ax.set_ylabel('Spend', fontsize=12)
-    ax.grid(True)
-    ax.legend()
-    plt.show()
+    fig.update_layout(title=f'Monthly Spend for {commodity}',
+                      xaxis_title='Month', yaxis_title='Spend',
+                      hovermode="x unified")
+    fig.show()
 
-def plot_bu_vs_spend_matplotlib(commodity, month, year):
+def plot_bu_vs_spend_plotly(commodity, month, year):
     df_filtered = data[(data['Commodity'] == commodity) & (data['Month'] == month) & (data['Year'] == year)]
     df_grouped = df_filtered.groupby('Business Unit')['Spend'].sum().reset_index()
     
-    fig, ax = plt.subplots(figsize=(10, 6))
-    bars = ax.bar(df_grouped['Business Unit'], df_grouped['Spend'], color='skyblue')
-    ax.set_title(f'BU Spend for {commodity} in {month}/{year}', fontsize=14)
-    ax.set_xlabel('Business Unit', fontsize=12)
-    ax.set_ylabel('Spend', fontsize=12)
-    ax.grid(True, axis='y')
-    plt.show()
+    fig = px.bar(df_grouped, x='Business Unit', y='Spend', text='Spend',
+                 labels={'Spend': 'Spend', 'Business Unit': 'Business Unit'},
+                 title=f'BU Spend for {commodity} in {month}/{year}')
+    fig.update_traces(texttemplate='%{text:.2s}', textposition='outside')
+    fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide')
+    fig.show()
 
-# Widgets for interactive selection
+# Update function modified to use Plotly
+def update_plots(change):
+    plot_spend_vs_month_plotly(commodity_dropdown.value)
+    plot_bu_vs_spend_plotly(commodity_dropdown.value, month_dropdown.value, year_dropdown.value)
+
+# Widgets
 commodity_dropdown = widgets.Dropdown(options=sorted(data['Commodity'].unique()), description='Commodity:')
 month_dropdown = widgets.Dropdown(options=list(range(1, 13)), description='Month:', value=1)
 year_dropdown = widgets.Dropdown(options=sorted(data['Year'].unique()), description='Year:', value=sorted(data['Year'].unique())[-1])
-
-def update_plots(change):
-    plot_spend_vs_month_matplotlib(commodity_dropdown.value)
-    plot_bu_vs_spend_matplotlib(commodity_dropdown.value, month_dropdown.value, year_dropdown.value)
 
 commodity_dropdown.observe(update_plots, names='value')
 month_dropdown.observe(update_plots, names='value')
 year_dropdown.observe(update_plots, names='value')
 
 display(commodity_dropdown, month_dropdown, year_dropdown)
-# Initially call the update function to display plots for the default selections
-update_plots(None)
