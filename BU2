@@ -1,66 +1,71 @@
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 from sklearn.ensemble import IsolationForest
 import ipywidgets as widgets
-from IPython.display import display, clear_output
+from IPython.display import display
 
 # Load the data
-data_path = 'TEST (1).xlsx'  # Update this path
+data_path = 'TEST (1).xlsx'  # Adjust this path to your file location
 data = pd.read_excel(data_path)
 
-# Convert Month from numbers to names
-data['Month Name'] = pd.to_datetime(data['Month'], format='%m').dt.month_name().str.slice(stop=3)
+# Generate Month Names for display and filtering
+data['Month Name'] = data['Month'].apply(lambda x: pd.to_datetime(x, format='%m').strftime('%b'))
 
 def detect_anomalies_with_isolation_forest(df, feature='Spend'):
     model = IsolationForest(n_estimators=100, contamination='auto', random_state=42)
-    df['Anomaly'] = model.fit_predict(df[[feature]])
+    anomalies = model.fit_predict(df[[feature]])
+    df['Anomaly'] = anomalies
     return df
 
 def plot_spend_vs_month_plotly(commodity):
     fig = go.Figure()
-    colors = px.colors.qualitative.Plotly
+    year_colors = {2022: 'green', 2023: 'lightblue'}
     
-    for i, year in enumerate(sorted(data['Year'].unique())):
+    for year in sorted(data['Year'].unique()):
         df_year = data[(data['Commodity'] == commodity) & (data['Year'] == year)]
         df_year_grouped = df_year.groupby(['Month', 'Month Name'], as_index=False).agg({'Spend': 'sum'})
         df_year_grouped = detect_anomalies_with_isolation_forest(df_year_grouped, 'Spend')
         
-        # Plot normal and anomaly on the same line
+        # Plot lines with points
         fig.add_trace(go.Scatter(x=df_year_grouped['Month Name'], y=df_year_grouped['Spend'],
                                  mode='lines+markers', name=f'Year {year}',
-                                 line=dict(color=colors[i % len(colors)]),
-                                 marker=dict(color=df_year_grouped['Anomaly'].map({1: colors[i % len(colors)], -1: 'red'})),
-                                 hoverinfo='x+y'))
+                                 line=dict(color=year_colors[year]),
+                                 marker=dict(size=8, color=['red' if x == -1 else year_colors[year] for x in df_year_grouped['Anomaly']])))
     
     fig.update_layout(title=f'Monthly Spend for {commodity}',
-                      xaxis_title='Month', yaxis_title='Spend',
-                      hovermode="closest")
+                      xaxis_title='Month', yaxis_title='Spend')
     fig.show()
 
-def plot_bu_vs_spend_plotly(commodity, month, year):
-    df_filtered = data[(data['Commodity'] == commodity) & (data['Month'] == month) & (data['Year'] == year)]
+def plot_bu_vs_spend_plotly(commodity, selected_month_name, year):
+    selected_month = pd.to_datetime(selected_month_name, format='%b').month
+    df_filtered = data[(data['Commodity'] == commodity) & (data['Month'] == selected_month) & (data['Year'] == year)]
     df_grouped = df_filtered.groupby('Business Unit')['Spend'].sum().reset_index()
     
-    fig = px.bar(df_grouped, x='Business Unit', y='Spend',
-                 title=f'BU Spend for {commodity} in {pd.to_datetime(month, format='%m').dt.month_name()} {year}',
-                 labels={'Spend': 'Spend', 'Business Unit': 'Business Unit'})
-    fig.update_layout(hovermode="closest")
+    fig = go.Figure(data=[go.Bar(x=df_grouped['Business Unit'], y=df_grouped['Spend'],
+                                 marker_color='skyblue', marker_line_color='black',
+                                 marker_line_width=1.5, opacity=0.6)])
+    
+    fig.update_layout(title=f"BU Spend for {commodity} in {selected_month_name} {year}",
+                      xaxis_title='Business Unit', yaxis_title='Spend')
     fig.show()
 
-# Update function linked to widgets
+# Widgets setup
+commodity_dropdown = widgets.Dropdown(options=sorted(data['Commodity'].unique()), description='Commodity:')
+month_dropdown = widgets.Dropdown(options=[pd.to_datetime(x, format='%m').strftime('%b') for x in range(1, 13)], description='Month:', value='Jan')
+year_dropdown = widgets.Dropdown(options=sorted(data['Year'].unique()), description='Year:', value=sorted(data['Year'].unique())[-1])
+
+# Update function
 def update_plots(change):
-    clear_output(wait=True)
-    display(commodity_dropdown, month_dropdown, year_dropdown)
     plot_spend_vs_month_plotly(commodity_dropdown.value)
     plot_bu_vs_spend_plotly(commodity_dropdown.value, month_dropdown.value, year_dropdown.value)
 
-commodity_dropdown = widgets.Dropdown(options=sorted(data['Commodity'].unique()), description='Commodity:')
-month_dropdown = widgets.Dropdown(options=list(range(1, 13)), description='Month:', value=1)
-year_dropdown = widgets.Dropdown(options=sorted(data['Year'].unique()), description='Year:', value=sorted(data['Year'].unique())[-1])
-
+# Attach the update function to the widgets
 commodity_dropdown.observe(update_plots, names='value')
 month_dropdown.observe(update_plots, names='value')
 year_dropdown.observe(update_plots, names='value')
 
+# Display widgets
 display(commodity_dropdown, month_dropdown, year_dropdown)
+
+# Initial plot display
+update_plots(None)
