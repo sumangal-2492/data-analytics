@@ -1,0 +1,80 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import ipywidgets as widgets
+from IPython.display import display
+from sklearn.ensemble import IsolationForest
+
+# Load the new data
+new_file_path = 'TEST (1).xlsx'  # Adjust the path according to your environment
+data = pd.read_excel(new_file_path)
+
+def detect_anomalies(df, feature='Spend'):
+    """
+    Uses Isolation Forest to detect anomalies in the spend data.
+    """
+    isolation_forest = IsolationForest(contamination=0.1)
+    spend_reshaped = df[feature].values.reshape(-1, 1)
+    preds = isolation_forest.fit_predict(spend_reshaped)
+    df['Anomaly'] = preds
+    return df
+
+def plot_spend_vs_month(commodity):
+    """
+    Plots spend vs month for the selected commodity and highlights anomalies detected by Isolation Forest.
+    """
+    # Filter data for the selected commodity
+    commodity_data = data[data['Commodity'] == commodity]
+    
+    # Group by Year and Month, and aggregate Spend
+    commodity_data = commodity_data.groupby(['Year', 'Month'], as_index=False).agg({'Spend':'sum'})
+    commodity_data = detect_anomalies(commodity_data)
+    
+    # Plotting
+    fig, ax = plt.subplots()
+    sns.lineplot(data=commodity_data, x='Month', y='Spend', hue='Year', marker='o', palette='tab10', ax=ax)
+    anomalies = commodity_data[commodity_data['Anomaly'] == -1]
+    ax.scatter(anomalies['Month'], anomalies['Spend'], color='red', label='Anomaly', zorder=5)
+    
+    plt.title(f'Monthly Spend for {commodity}')
+    plt.xlabel('Month')
+    plt.ylabel('Spend')
+    plt.grid(True)
+    plt.legend(title='Year')
+    plt.show()
+
+def plot_bu_vs_spend(commodity, month, year):
+    """
+    Plots BU vs spend for the selected commodity and month, aggregating spends within the same BU.
+    """
+    # Filter and aggregate data
+    filtered_data = data[(data['Commodity'] == commodity) & (data['Month'] == month) & (data['Year'] == year)]
+    bu_spend = filtered_data.groupby('Business Unit')['Spend'].sum().reset_index()
+    
+    # Plotting
+    sns.barplot(data=bu_spend, x='Business Unit', y='Spend', palette='viridis')
+    plt.title(f'Spend by Business Unit for {commodity} in {month}/{year}')
+    plt.xlabel('Business Unit')
+    plt.ylabel('Spend')
+    plt.grid(True, axis='y')
+    plt.show()
+
+# Interactive widget setup
+commodity_dropdown = widgets.Dropdown(options=list(data['Commodity'].unique()), description='Commodity:')
+month_dropdown = widgets.Dropdown(options=list(range(1, 13)), description='Month:')
+year_dropdown = widgets.Dropdown(options=[2022, 2023], description='Year:')
+
+def update_plots(change):
+    plot_spend_vs_month(commodity_dropdown.value)
+    plot_bu_vs_spend(commodity_dropdown.value, month_dropdown.value, year_dropdown.value)
+
+# Bind the update function to value changes in the dropdowns
+commodity_dropdown.observe(update_plots, names='value')
+month_dropdown.observe(update_plots, names='value')
+year_dropdown.observe(update_plots, names='value')
+
+# Display widgets
+display(commodity_dropdown, month_dropdown, year_dropdown)
+
+# Initial plot (optional)
+# update_plots(None)  # Uncomment to display initial plots immediately
