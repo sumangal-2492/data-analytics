@@ -1,0 +1,39 @@
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.metrics import classification_report, accuracy_score
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Assuming 'df' is your DataFrame and it includes a 'Anomaly' column
+# where 1 indicates an anomaly and 0 indicates normal
+
+# Prepare the dataset
+X = df.drop('Anomaly', axis=1)  # Features
+y = df['Anomaly']  # Target labels
+
+# Split the dataset into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+# Train a Decision Tree Classifier as the surrogate model
+surrogate_model = DecisionTreeClassifier(max_depth=5, random_state=42)
+surrogate_model.fit(X_train, y_train)
+
+# Evaluate the surrogate model
+y_pred = surrogate_model.predict(X_test)
+print(classification_report(y_test, y_pred))
+print("Accuracy:", accuracy_score(y_test, y_pred))
+
+# Analyze the surrogate model's feature importance
+feature_importances = surrogate_model.feature_importances_
+feature_names = X.columns
+
+# Create a DataFrame to visualize feature importances
+importances_df = pd.DataFrame({'Feature': feature_names, 'Importance': feature_importances})
+importances_df = importances_df.sort_values(by='Importance', ascending=False).reset_index(drop=True)
+
+print(importances_df)
+
+# Optionally, plot the decision tree for a visual interpretation
+plt.figure(figsize=(20, 10))
+plot_tree(surrogate_model, feature_names=feature_names, class_names=['Normal', 'Anomaly'], filled=True, rounded=True)
+plt.show()
