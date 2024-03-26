@@ -1,0 +1,96 @@
+import pandas as pd
+import ipywidgets as widgets
+from IPython.display import display, clear_output
+import matplotlib.pyplot as plt
+from sklearn.ensemble import IsolationForest
+
+def spend_analysis_tool(excel_file_path):
+    # Load the dataset
+    data = pd.read_excel(excel_file_path)
+
+    # Dropdowns for the initial selections
+    first_dropdown = widgets.Dropdown(options=['Commodity', 'Supplier'], value='Commodity', description='Select:', disabled=False,)
+    second_dropdown = widgets.Dropdown(options=[], description='Select:', disabled=False,)
+    month_dropdown = widgets.Dropdown(options=list(range(1, 13)), description='Month:', disabled=False,)
+
+    # Function to update the second dropdown based on the first selection
+    def update_second_dropdown(*args):
+        if first_dropdown.value == 'Commodity':
+            second_dropdown.options = data['Commodity'].unique()
+        else:
+            second_dropdown.options = data['Supplier'].unique()
+
+    first_dropdown.observe(update_second_dropdown, 'value')
+    update_second_dropdown()  # Initial update
+    
+    # Plotting function
+    def generate_plots(change):
+        filter_type = first_dropdown.value
+        filter_value = second_dropdown.value
+        selected_month = month_dropdown.value
+
+        # Filter data based on selections
+        if filter_type == 'Commodity':
+            filtered_data = data[data['Commodity'] == filter_value]
+        else:
+            filtered_data = data[data['Supplier'] == filter_value]
+
+        # Display Month vs. Spend plot
+        display_month_vs_spend_plot(filtered_data, filter_type)
+
+        # Display BU vs. Spend plot for the selected month
+        if selected_month:
+            display_bu_vs_spend_plot(filtered_data, selected_month, filter_type)
+    
+    # Function to display Month vs. Spend plot
+    def display_month_vs_spend_plot(filtered_data, filter_type):
+        fig, ax = plt.subplots(figsize=(10, 6))
+        # Implementation of Month vs. Spend plot goes here
+        # ...
+        plt.show()
+
+    # Function to display BU vs. Spend plot and setup for further drill-down
+    def display_bu_vs_spend_plot(filtered_data, selected_month, filter_type):
+        monthly_data = filtered_data[filtered_data['Month'] == selected_month]
+        bu_spend = monthly_data.groupby('Business Unit')['Spend'].sum()
+        
+        bu_spend.plot(kind='bar', figsize=(10, 6), title=f'BU Spend in Month {selected_month}')
+        plt.xlabel('Business Unit')
+        plt.ylabel('Spend')
+        plt.show()
+
+        # Dropdown for selecting a specific BU for further drill-down
+        bu_dropdown = widgets.Dropdown(
+            options=bu_spend.index,
+            description='Business Unit:',
+            disabled=False,
+        )
+        display(bu_dropdown)
+
+        # Function to generate commodity or supplier vs. spend trend based on the selected BU
+        def generate_final_trend(change):
+            selected_bu = bu_dropdown.value
+            final_filtered_data = monthly_data[monthly_data['Business Unit'] == selected_bu]
+            
+            if filter_type == 'Commodity':
+                final_plot_data = final_filtered_data.groupby('Commodity')['Spend'].sum()
+                plot_title = 'Commodity vs. Spend Trend'
+            else:
+                final_plot_data = final_filtered_data.groupby('Supplier')['Spend'].sum()
+                plot_title = 'Supplier vs. Spend Trend'
+            
+            final_plot_data.plot(kind='bar', figsize=(10, 6), title=plot_title)
+            plt.xlabel(filter_type)
+            plt.ylabel('Spend')
+            plt.show()
+
+        bu_dropdown.observe(generate_final_trend, 'value')
+
+    second_dropdown.observe(generate_plots, 'value')
+    month_dropdown.observe(generate_plots, 'value')
+
+    # Display the initial dropdown widgets
+    display(first_dropdown, second_dropdown, month_dropdown)
+
+# Call the function with the path to your Excel file
+spend_analysis_tool('/path/to/your/TEST (1).xlsx')
