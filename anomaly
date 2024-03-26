@@ -1,0 +1,39 @@
+# Function to update the second dropdown based on the first selection
+def update_dropdown_options(*args):
+    if category_dropdown.value == "Commodity View":
+        options = ['All'] + sorted(data['Commodity'].unique().tolist())
+    else:  # Supplier View
+        options = ['All'] + sorted(supplier_spend_difference.tolist())
+    specific_dropdown.options = options
+
+# Function to plot Spend vs. Month
+def plot_spend_vs_month(specific, category, month=None):
+    if category == "Commodity View":
+        df = data[data['Commodity'] == specific] if specific != "All" else data
+    else:
+        df = data[data['Supplier'] == specific] if specific != "All" else data
+
+    if month:
+        df = df[df['Month'] == month]
+    
+    # Plotting logic here...
+
+# Function to plot Business Unit vs. Spend for a selected month
+def plot_bu_vs_spend(specific, category, month):
+    # Filtering and plotting logic similar to above, focused on Business Unit vs. Spend
+
+# Creating dropdown widgets
+category_dropdown = widgets.Dropdown(options=["Commodity View", "Supplier View"], description="View By:")
+specific_dropdown = widgets.Dropdown(description="Select Specific:")
+month_dropdown = widgets.Dropdown(options=[None] + list(range(1, 13)), description='Month:', value=None)
+
+# Observers
+category_dropdown.observe(update_dropdown_options, 'value')
+specific_dropdown.observe(lambda change: plot_spend_vs_month(specific_dropdown.value, category_dropdown.value, month_dropdown.value), 'value')
+month_dropdown.observe(lambda change: plot_bu_vs_spend(specific_dropdown.value, category_dropdown.value, month_dropdown.value), 'value')
+
+# Initialize
+update_dropdown_options()
+
+# Display widgets
+display(category_dropdown, specific_dropdown, month_dropdown)
