@@ -1,0 +1,53 @@
+import pandas as pd
+from sklearn.ensemble import IsolationForest
+
+# Load the data
+file_path = '/mnt/data/dummy.xlsx'
+data = pd.read_excel(file_path)
+
+# Aggregate Spend by Year, Month, Commodity, Business Unit, and Supplier
+data_aggregated = data.groupby(['Year', 'Month', 'Commodity', 'Business Unit', 'Supplier']).agg({'Spend': 'sum'}).reset_index()
+
+# Sort data to ensure correct YOY calculation
+data_aggregated.sort_values(by=['Commodity', 'Business Unit', 'Supplier', 'Year', 'Month'], inplace=True)
+
+# Calculate the spend difference YOY
+data_aggregated['Prev_Year_Spend'] = data_aggregated.groupby(['Commodity', 'Business Unit', 'Supplier', 'Month'])['Spend'].shift(1)
+data_aggregated['Spend_Difference'] = data_aggregated['Spend'] - data_aggregated['Prev_Year_Spend']
+
+# Drop rows without previous year data
+data_aggregated.dropna(subset=['Spend_Difference'], inplace=True)
+
+# Apply Isolation Forest
+isolation_forest = IsolationForest(n_estimators=100, contamination=0.05)  # Adjust contamination as needed
+data_aggregated['Anomaly_Score'] = isolation_forest.fit_predict(data_aggregated[['Spend_Difference']])
+
+# Mark anomalies
+data_aggregated['Anomaly_Detected'] = data_aggregated['Anomaly_Score'].apply(lambda x: 'Yes' if x == -1 else 'No')
+
+# Function to infer potential causes of anomalies
+def infer_causes(row):
+    if row['Anomaly_Detected'] == 'Yes':
+        causes = []
+        # Compare spend differences with other entries
+        mean_diff = data_aggregated[(data_aggregated['Month'] == row['Month']) & (data_aggregated['Commodity'] != row['Commodity'])]['Spend_Difference'].mean()
+        if abs(row['Spend_Difference']) > abs(mean_diff):
+            causes.append('Commodity Change')
+
+        mean_diff = data_aggregated[(data_aggregated['Month'] == row['Month']) & (data_aggregated['Supplier'] != row['Supplier'])]['Spend_Difference'].mean()
+        if abs(row['Spend_Difference']) > abs(mean_diff):
+            causes.append('Supplier Change')
+
+        mean_diff = data_aggregated[(data_aggregated['Month'] == row['Month']) & (data_aggregated['Business Unit'] != row['Business Unit'])]['Spend_Difference'].mean()
+        if abs(row['Spend_Difference']) > abs(mean_diff):
+            causes.append('Business Unit Change')
+
+        return ', '.join(causes)
+    return ''
+
+# Apply the function to identify causes
+data_aggregated['Inference'] = data_aggregated.apply(infer_causes, axis=1)
+
+# Resultant DataFrame
+result = data_aggregated[['Year', 'Month', 'Commodity', 'Business Unit', 'Supplier', 'Spend', 'Prev_Year_Spend', 'Spend_Difference', 'Anomaly_Detected', 'Inference']]
+result.head()
