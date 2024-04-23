@@ -1,0 +1,90 @@
+import pandas as pd
+from sklearn.ensemble import IsolationForest
+
+# Load the data from the Excel file
+file_path = '/mnt/data/dummy.xlsx'
+data = pd.read_excel(file_path)
+
+# Helper function to prepare data for outlier detection
+def prepare_outlier_data(group_columns):
+    # Group data by specified columns plus Year and aggregate Spend
+    grouped_data = data.groupby(group_columns + ['Year']).agg({'Spend': 'sum'}).reset_index()
+    
+    # Pivot the data to have years in columns
+    pivot_data = grouped_data.pivot_table(index=group_columns, columns='Year', values='Spend', fill_value=0)
+    
+    # Ensure we only work with years that are common in the dataset to calculate differences
+    years = pivot_data.columns
+    if len(years) > 1:
+        # Calculate difference in spend between consecutive years
+        pivot_data['Spend_Diff'] = pivot_data[years[-1]] - pivot_data[years[-2]]
+    else:
+        pivot_data['Spend_Diff'] = 0  # No difference calculation possible with one year
+
+    # Reset index to flatten the DataFrame
+    pivot_data.reset_index(inplace=True)
+
+    # Reduce to relevant columns only (last transformation brings back 'group_columns' and 'Spend_Diff')
+    return pivot_data[group_columns + ['Spend_Diff']]
+
+# Calculate datasets for each grouping
+groupings = [
+    ['Month'],
+    ['Month', 'Commodity'],
+    ['Month', 'Supplier'],
+    ['Month', 'Commodity', 'Supplier']
+]
+grouped_datasets = [prepare_outlier_data(group) for group in groupings]
+
+# Detect outliers using Isolation Forest
+iso_forest = IsolationForest(contamination=0.05)  # Assumed 5% of data are outliers
+
+# Apply Isolation Forest to each dataset
+outlier_datasets = []
+for df in grouped_datasets:
+    # Train model on the Spend Difference
+    df['Outlier'] = iso_forest.fit_predict(df[['Spend_Diff']])
+    outlier_datasets.append(df)
+
+# Function to add detailed inferences
+def add_detailed_inference(df, group_columns):
+    # Determine high and low quantiles for spend differences
+    q_low, q_high = df['Spend_Diff'].quantile([0.25, 0.75])
+    iqr = q_high - q_low
+
+    # Define boundaries for outliers
+    lower_bound = q_low - 1.5 * iqr
+    upper_bound = q_high + 1.5 * iqr
+
+    # Describe changes in entities (last group column)
+    entities_per_year = data.groupby(['Year'] + group_columns).size().reset_index().rename(columns={0: 'Count'})
+    entities_pivot = entities_per_year.pivot_table(index=group_columns, columns='Year', values='Count', fill_value=0)
+    years = entities_pivot.columns
+    changes = {}
+    if len(years) > 1:
+        last_year, prev_year = years[-1], years[-2]
+        new_entities = entities_pivot[(entities_pivot[last_year] > 0) & (entities_pivot[prev_year] == 0)].index.tolist()
+        removed_entities = entities_pivot[(entities_pivot[last_year] == 0) & (entities_pivot[prev_year] > 0)].index.tolist()
+        changes['new'] = new_entities
+        changes['removed'] = removed_entities
+    
+    # Combine spend difference inference with entity change inference
+    df['Inference'] = df.apply(
+        lambda row: f"Significantly High Spend; New {group_columns[-1]} added: {changes['new']}" if row['Spend_Diff'] > upper_bound else
+                    (f"Significantly Low Spend; {group_columns[-1]} removed: {changes['removed']}" if row['Spend_Diff'] < lower_bound else
+                     "Typical Spend; No significant entity changes"),
+        axis=1
+    )
+    return df
+
+# Add 'Inference' to the most complex grouping dataset
+outlier_datasets[3] = add_detailed_inference(outlier_datasets[3], groupings[3])
+
+# Merge all datasets into one final DataFrame
+final_dataset = pd.concat(outlier_datasets, keys=['Month', 'Month_Commodity', 'Month_Supplier', 'Full_Detail'])
+
+# Save the final dataset to a CSV file for import into Tableau
+final_dataset_path = '/mnt/data/final_outlier_dataset_with_detailed_inference.csv'
+final_dataset.to_csv(final_dataset_path, index=False)
+
+final_dataset.head()
