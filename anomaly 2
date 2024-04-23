@@ -88,3 +88,73 @@ final_dataset_path = '/mnt/data/final_outlier_dataset_with_detailed_inference.cs
 final_dataset.to_csv(final_dataset_path, index=False)
 
 final_dataset.head()
+
+
+
+********************************************************************************************************************************
+import pandas as pd
+from sklearn.ensemble import IsolationForest
+
+# Load the data from the Excel file
+file_path = '/mnt/data/dummy.xlsx'
+data = pd.read_excel(file_path)
+
+# Helper function to prepare data for outlier detection
+def prepare_outlier_data(group_columns):
+    # Group data by specified columns plus Year and aggregate Spend
+    grouped_data = data.groupby(group_columns + ['Year']).agg({'Spend': 'sum'}).reset_index()
+    
+    # Pivot the data to have years in columns
+    pivot_data = grouped_data.pivot_table(index=group_columns, columns='Year', values='Spend', fill_value=0)
+    
+    # Calculate difference in spend between consecutive years
+    years = pivot_data.columns
+    if len(years) > 1:
+        pivot_data['Spend_Diff'] = pivot_data[years[-1]] - pivot_data[years[-2]]
+    else:
+        pivot_data['Spend_Diff'] = 0  # No difference calculation possible with one year
+
+    # Reset index to flatten the DataFrame
+    pivot_data.reset_index(inplace=True)
+
+    return pivot_data[group_columns + ['Spend_Diff']]
+
+# Calculate datasets for each grouping
+groupings = [
+    ['Month'],
+    ['Month', 'Commodity'],
+    ['Month', 'Supplier'],
+    ['Month', 'Commodity', 'Supplier']
+]
+grouped_datasets = [prepare_outlier_data(group) for group in groupings]
+
+# Detect outliers using Isolation Forest
+iso_forest = IsolationForest(contamination=0.05)  # Assumed 5% of data are outliers
+
+# Function to apply isolation forest and save datasets
+def detect_and_save_outliers(df, group_columns, file_name):
+    df['Outlier'] = iso_forest.fit_predict(df[['Spend_Diff']])
+    if group_columns == ['Month', 'Commodity', 'Supplier']:  # Add detailed inference for the most complex group
+        df = add_detailed_inference(df, group_columns)
+    # Save to CSV
+    df.to_csv(f'/mnt/data/{file_name}', index=False)
+
+# Add detailed inference for the most complex grouping
+def add_detailed_inference(df, group_columns):
+    # Define boundaries for outliers based on quantiles
+    q_low, q_high = df['Spend_Diff'].quantile([0.25, 0.75])
+    iqr = q_high - q_low
+    lower_bound = q_low - 1.5 * iqr
+    upper_bound = q_high + 1.5 * iqr
+
+    # Add inference based on spend difference
+    df['Inference'] = df['Spend_Diff'].apply(
+        lambda x: 'Significantly High Spend' if x > upper_bound else 
+                  ('Significantly Low Spend' if x < lower_bound else 'Typical Spend')
+    )
+    return df
+
+# Apply detection and save each dataset
+file_names = ['outliers_by_month.csv', 'outliers_by_month_commodity.csv', 'outliers_by_month_supplier.csv', 'outliers_by_full_details.csv']
+for dataset, group, file_name in zip(grouped_datasets, groupings, file_names):
+    detect_and_save_outliers(dataset, group, file_name)
