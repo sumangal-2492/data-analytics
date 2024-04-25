@@ -1,0 +1,43 @@
+import pandas as pd
+
+def detect_top_outliers(data, key_columns):
+    # Grouping the data and calculating sum of spend
+    grouped_data = data.groupby(key_columns).agg(Total_Spend=('Spend', 'sum')).reset_index()
+    
+    # Calculating IQR and median
+    Q1 = grouped_data['Total_Spend'].quantile(0.25)
+    Q3 = grouped_data['Total_Spend'].quantile(0.75)
+    IQR = Q3 - Q1
+    median_spend = grouped_data['Total_Spend'].median()
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+    
+    # Identifying outliers
+    outliers = grouped_data[(grouped_data['Total_Spend'] < lower_bound) | (grouped_data['Total_Spend'] > upper_bound)]
+    
+    # Calculating deviations from median and sorting
+    outliers['Deviation'] = (outliers['Total_Spend'] - median_spend).abs()
+    outliers_sorted = outliers.sort_values(by='Deviation', ascending=False).head(5)
+    
+    return outliers_sorted
+
+def main():
+    # Load the data from an Excel file
+    file_path = 'path_to_your_file.xlsx'  # Change this to your file path
+    data = pd.read_excel(file_path)
+    
+    # Applying the function to each level
+    outliers_level_1 = detect_top_outliers(data, ['Year', 'Month'])
+    outliers_level_2 = detect_top_outliers(data, ['Year', 'Month', 'Commodity'])
+    outliers_level_3 = detect_top_outliers(data, ['Year', 'Month', 'Commodity', 'Supplier'])
+    
+    # Print the results
+    print("Level 1 Outliers (Monthly Spend):")
+    print(outliers_level_1)
+    print("\nLevel 2 Outliers (Spend by Commodity within each Month):")
+    print(outliers_level_2)
+    print("\nLevel 3 Outliers (Spend by Supplier within each Commodity and Month):")
+    print(outliers_level_3)
+
+if __name__ == "__main__":
+    main()
