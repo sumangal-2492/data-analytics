@@ -41,3 +41,47 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+*****************************************************************************************************************************
+
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Load the data
+data = pd.read_excel('path_to_your_file.xlsx')
+
+# Filter data for the years of interest, assuming they are 2023 and 2024
+data_filtered = data[(data['Year'] == 2023) | (data['Year'] == 2024)]
+
+# Define a function for outlier detection using IQR
+def detect_outliers(data):
+    Q1 = data.quantile(0.25)
+    Q3 = data.quantile(0.75)
+    IQR = Q3 - Q1
+    return data[(data < (Q1 - 1.5 * IQR)) | (data > (Q3 + 1.5 * IQR))]
+
+# Data aggregation and outlier detection at different levels
+def analyze_level(group_columns):
+    group_data = data_filtered.groupby(['Year'] + group_columns).agg({'Spend': 'sum'}).unstack(level=0)
+    spend_diff = group_data.diff(axis=1).droplevel(0, axis=1).iloc[:, -1]
+    outliers = detect_outliers(spend_diff)
+    return spend_diff, outliers
+
+# Analyze each level
+level_1_diff, outliers_level_1 = analyze_level(['Month'])
+level_2_diff, outliers_level_2 = analyze_level(['Month', 'Commodity'])
+level_3_diff, outliers_level_3 = analyze_level(['Month', 'Commodity', 'Supplier'])
+
+# Visualization of results
+plt.figure(figsize=(18, 5))
+plt.subplot(1, 3, 1)
+sns.boxplot(y=level_1_diff).set_title('Level 1: Month')
+plt.subplot(1, 3, 2)
+sns.boxplot(y=level_2_diff).set_title('Level 2: Month + Commodity')
+plt.subplot(1, 3, 3)
+sns.boxplot(y=level_3_diff).set_title('Level 3: Month + Commodity + Supplier')
+plt.tight_layout()
+plt.show()
