@@ -194,3 +194,46 @@ plt.subplot(1, 3, 3)
 sns.boxplot(y=result_level_3['Spend']).set_title('Level 3: Month + Commodity + Supplier')
 plt.tight_layout()
 plt.show()
+****************************************************************************************************************************
+
+
+import pandas as pd
+import numpy as np
+
+# Load your data
+file_path = 'path_to_your_file.xlsx'  # Replace with your file path
+data = pd.read_excel(file_path)
+
+# Filter the data for the years of interest
+data_filtered = data[(data['Year'] == 2023) | (data['Year'] == 2024)]
+
+# Function to compute Z-score and mark outliers
+def mark_outliers(data, group_cols, spend_col='Spend', threshold=3):
+    # Group the data and calculate differences
+    data_grouped = data.groupby(group_cols)[spend_col].sum().reset_index()
+    data_grouped['Difference'] = data_grouped.groupby(group_cols[:-1])[spend_col].diff()
+    
+    # Calculate mean and std dev of the differences
+    mean_diff = data_grouped['Difference'].mean()
+    std_diff = data_grouped['Difference'].std()
+    
+    # Calculate Z-scores
+    data_grouped['Z-Score'] = (data_grouped['Difference'] - mean_diff) / std_diff
+    
+    # Mark outliers
+    data_grouped['Outlier'] = np.where(abs(data_grouped['Z-Score']) > threshold, -1, 1)
+    
+    return data_grouped
+
+# Applying the function at each level
+outliers_level_1 = mark_outliers(data_filtered, ['Year', 'Month'])
+outliers_level_2 = mark_outliers(data_filtered, ['Year', 'Month', 'Commodity'])
+outliers_level_3 = mark_outliers(data_filtered, ['Year', 'Month', 'Commodity', 'Supplier'])
+
+# Display the outlier data frames
+print("Outliers at Level 1 (Month):")
+print(outliers_level_1)
+print("\nOutliers at Level 2 (Month + Commodity):")
+print(outliers_level_2)
+print("\nOutliers at Level 3 (Month + Commodity + Supplier):")
+print(outliers_level_3)
