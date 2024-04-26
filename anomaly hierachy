@@ -107,3 +107,48 @@ plt.ylabel("Density")
 
 # Show the plot
 plt.show()
+*********************************************************************************
+
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Load the data
+data = pd.read_excel('path_to_your_file.xlsx')
+
+# Define a function for outlier detection using IQR that returns the bounds
+def detect_outliers_bounds(series):
+    Q1 = series.quantile(0.25)
+    Q3 = series.quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+    return lower_bound, upper_bound
+
+# Aggregate data and append outlier flags
+def analyze_and_flag(group_columns):
+    # Aggregate the data
+    aggregated_data = data.groupby(['Year'] + group_columns).agg({'Spend': 'sum'}).reset_index()
+    
+    # Calculate spend difference between years
+    pivot_table = aggregated_data.pivot_table(values='Spend', index=group_columns, columns='Year', fill_value=0)
+    pivot_table['Spend_Difference'] = pivot_table.diff(axis=1).iloc[:, -1]
+    
+    # Detect outliers in the spend difference
+    lower_bound, upper_bound = detect_outliers_bounds(pivot_table['Spend_Difference'])
+    pivot_table['Outlier_Flag'] = np.where((pivot_table['Spend_Difference'] < lower_bound) | 
+                                           (pivot_table['Spend_Difference'] > upper_bound), -1, 0)
+    
+    # Merge the outlier flags back to the original data
+    final_data = pd.merge(data, pivot_table[['Spend_Difference', 'Outlier_Flag']], on=group_columns, how='left')
+    return final_data
+
+# Example usage for a specific level
+# You can call this function for each level you want to analyze
+final_data_level_1 = analyze_and_flag(['Month'])
+final_data_level_2 = analyze_and_flag(['Month', 'Commodity'])
+final_data_level_3 = analyze_and_flag(['Month', 'Commodity', 'Supplier'])
+
+# Optionally, you can save the results to a new Excel file
+final_data_level_3.to_excel('outlier_flagged_data.xlsx', index=False)
