@@ -237,3 +237,49 @@ print("\nOutliers at Level 2 (Month + Commodity):")
 print(outliers_level_2)
 print("\nOutliers at Level 3 (Month + Commodity + Supplier):")
 print(outliers_level_3)
+*****************************************************************************************************
+
+
+import pandas as pd
+import numpy as np
+
+# Load the data from an Excel file
+def load_data(file_path):
+    return pd.read_excel(file_path)
+
+# Calculate spend differences and detect outliers
+def calculate_spend_diff_and_outliers(df, grouping_columns):
+    # Group by specified columns and Year, then calculate total spend
+    grouped_spend = df.groupby(grouping_columns + ['Year'])['Spend'].sum().unstack(fill_value=0)
+    # Calculate spend difference between 2023 and 2022
+    grouped_spend['Spend Difference'] = grouped_spend[2023] - grouped_spend[2022]
+    # Compute Z-score for the spend differences
+    grouped_spend['Z-Score'] = (grouped_spend['Spend Difference'] - grouped_spend['Spend Difference'].mean()) / grouped_spend['Spend Difference'].std()
+    # Classify outliers
+    grouped_spend['Outlier'] = np.where((grouped_spend['Z-Score'].abs() > 3), -1, 1)
+    # Reset index to flatten the DataFrame
+    result = grouped_spend.reset_index()
+    return result[['Spend Difference', 'Z-Score', 'Outlier'] + grouping_columns]
+
+# Main function to run the analysis
+def analyze_spend(file_path):
+    # Load data
+    data = load_data(file_path)
+    # Filter data for years 2022 and 2023
+    filtered_data = data[(data['Year'] == 2022) | (data['Year'] == 2023)]
+    
+    # Calculate for each hierarchy level
+    level1 = calculate_spend_diff_and_outliers(filtered_data, ['Month'])
+    level2 = calculate_spend_diff_and_outliers(filtered_data, ['Month', 'Commodity'])
+    level3 = calculate_spend_diff_and_outliers(filtered_data, ['Month', 'Commodity', 'Supplier'])
+    
+    # Concatenate results for a comprehensive view
+    final_df = pd.concat([level1, level2, level3])
+    final_df.reset_index(drop=True, inplace=True)
+    
+    return final_df
+
+# Example usage
+file_path = 'path_to_your_excel_file.xlsx'  # Replace with your actual file path
+final_results = analyze_spend(file_path)
+print(final_results.head())
