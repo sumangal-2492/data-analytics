@@ -152,3 +152,45 @@ final_data_level_3 = analyze_and_flag(['Month', 'Commodity', 'Supplier'])
 
 # Optionally, you can save the results to a new Excel file
 final_data_level_3.to_excel('outlier_flagged_data.xlsx', index=False)
+***************************************************************************************
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Load the data
+data = pd.read_excel('path_to_your_file.xlsx')
+
+# Define a function for outlier detection using IQR and flagging
+def flag_outliers(data):
+    Q1 = data.quantile(0.25)
+    Q3 = data.quantile(0.75)
+    IQR = Q3 - Q1
+    outlier_condition = (data < (Q1 - 1.5 * IQR)) | (data > (Q3 + 1.5 * IQR))
+    return np.where(outlier_condition, -1, 0)  # Return -1 for outliers, 0 for others
+
+# Data aggregation, outlier detection, and dataset preparation at different levels
+def analyze_level(group_columns):
+    group_data = data.groupby(['Year'] + group_columns).agg({'Spend': 'sum'}).unstack(level=0)
+    spend_diff = group_data.diff(axis=1).droplevel(0, axis=1).iloc[:, -1]
+    outliers_flag = flag_outliers(spend_diff)
+    # Prepare the result dataset
+    result = spend_diff.reset_index()
+    result['Outlier_Flag'] = outliers_flag
+    return result
+
+# Analyze each level
+result_level_1 = analyze_level(['Month'])
+result_level_2 = analyze_level(['Month', 'Commodity'])
+result_level_3 = analyze_level(['Month', 'Commodity', 'Supplier'])
+
+# Visualization of results
+plt.figure(figsize=(18, 5))
+plt.subplot(1, 3, 1)
+sns.boxplot(y=result_level_1['Spend']).set_title('Level 1: Month')
+plt.subplot(1, 3, 2)
+sns.boxplot(y=result_level_2['Spend']).set_title('Level 2: Month + Commodity')
+plt.subplot(1, 3, 3)
+sns.boxplot(y=result_level_3['Spend']).set_title('Level 3: Month + Commodity + Supplier')
+plt.tight_layout()
+plt.show()
